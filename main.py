@@ -129,7 +129,7 @@ def main():
         if "blur" in enabled_filters and have_lap:
             current = current[current["LaplacianVariance"] >= args.min_lap].copy()
 
-        # FilteredCircularity (threshold from full df, like manual)
+        # FilteredCircularity (threshold from full df)
         if "circularity" in enabled_filters:
             if not have_circ:
                 print("Skipping FilteredCircularity (missing column: circularity)")
@@ -141,7 +141,7 @@ def main():
             circ_thr = df["circularity"].quantile(args.min_circ_q)
             current = current[current["circularity"] >= circ_thr].copy()
 
-        # FilteredCHmetric (threshold from full df, like manual)
+        # FilteredCHmetric (threshold from full df)
         if "chmetric" in enabled_filters:
             if not have_ch:
                 print("Skipping FilteredCHmetric (missing column: chMetric)")
