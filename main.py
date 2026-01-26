@@ -9,12 +9,12 @@ def main():
     parser = argparse.ArgumentParser(description="Glomerulus patch extraction & export")
 
     parser.add_argument("path", type=str, help="Dataset folder or single image")
-
     parser.add_argument("--out_folder", "-o", type=str, default="../OUTPUT/", help="Output root folder")
 
     parser.add_argument("--patch_size", "-w", type=int, default=1000, help="Patch width in pixels (default: 1000)")
     parser.add_argument("--out_size", type=int, default=224, help="Export size for PNGs (default: 224)")
 
+    # These default to True, and can be disabled with flags
     parser.add_argument("--save_masks", action="store_true", default=True, help="Also save masks (default: True)")
     parser.add_argument("--no_masks", action="store_true", help="Disable saving masks")
     parser.add_argument("--save_markups", action="store_true", default=True, help="Also save markups (default: True)")
@@ -23,13 +23,23 @@ def main():
     parser.add_argument("--csv", action="store_true", default=True, help="Save full dataframe CSV (default: True)")
     parser.add_argument("--no_csv", action="store_true", help="Disable saving CSV")
 
+    # Filtering controls
+    parser.add_argument("--no_filters", action="store_true", help="Disable all Filtered* exports")
+    parser.add_argument(
+        "--filters",
+        nargs="+",
+        default=["small", "large", "white", "blur", "circularity", "chmetric"],
+        choices=["small", "large", "white", "blur", "circularity", "chmetric"],
+        help="Which Filtered* exports to generate (default: all)",
+    )
+
     # Filter thresholds
     parser.add_argument("--min_area", type=float, default=20000.0, help="FilteredSmall: keep area >= min_area (default: 20000)")
     parser.add_argument("--max_area", type=float, default=1200000.0, help="FilteredLarge: keep area <= max_area (default: 1200000)")
     parser.add_argument("--max_white", type=float, default=0.75, help="FilteredWhite: keep percWhite <= max_white (default: 0.75)")
     parser.add_argument("--min_lap", type=float, default=400.0, help="FilteredBlur: keep LaplacianVariance >= min_lap (default: 400)")
 
-    # 10th percentile thresholds for these
+    # 10th percentile thresholds for these (computed from FULL dataset)
     parser.add_argument("--min_circ_q", type=float, default=0.10, help="FilteredCircularity: keep >= quantile (default: 0.10)")
     parser.add_argument("--min_ch_q", type=float, default=0.10, help="FilteredCHmetric: keep >= quantile (default: 0.10)")
 
@@ -51,109 +61,113 @@ def main():
     df = extractor.return_dataframe()
     print(f"Found {len(df)} annotations.")
 
+    if df is None or len(df) == 0:
+        print("No annotations found. Exiting.")
+        return
+
     save_csv = args.csv and not args.no_csv
     if save_csv:
         df.to_csv(os.path.join(out_root, "annotations_full.csv"), index=False)
 
     # -----------------------------
-    # Filtered exports (match manual)
+    # Filtered exports (optional)
     # -----------------------------
-    df_work = df.copy()
+    enabled_filters = set(args.filters)
 
-    # FilteredSmall: include area >= 20000
-    filtered_small = df_work[df_work["area"] >= args.min_area].copy()
-    _export_filtered(
-        name="FilteredSmall",
-        df=filtered_small,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+    if not args.no_filters:
+        df_work = df.copy()
 
-    # FilteredLarge: include area <= 1200000
-    filtered_large = filtered_small[filtered_small["area"] <= args.max_area].copy()
-    _export_filtered(
-        name="FilteredLarge",
-        df=filtered_large,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+        # if shape columns don't exist, skip filters that need them
+        have_area = "area" in df_work.columns
+        have_white = "percWhite" in df_work.columns
+        have_lap = "LaplacianVariance" in df_work.columns
+        have_circ = "circularity" in df_work.columns
+        have_ch = "chMetric" in df_work.columns
 
-    # FilteredWhite: include percWhite <= 0.75
-    if "percWhite" in filtered_large.columns:
-        filtered_white = filtered_large[filtered_large["percWhite"] <= args.max_white].copy()
-    else:
-        filtered_white = filtered_large.copy()
-    _export_filtered(
-        name="FilteredWhite",
-        df=filtered_white,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+        # FilteredSmall
+        if "small" in enabled_filters:
+            if not have_area:
+                print("Skipping FilteredSmall (missing column: area)")
+            else:
+                filtered_small = df_work[df_work["area"] >= args.min_area].copy()
+                _export_filtered("FilteredSmall", filtered_small, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
+        else:
+            filtered_small = df_work
 
-    # FilteredBlur: include LaplacianVariance >= 400
-    if "LaplacianVariance" in filtered_white.columns:
-        filtered_blur = filtered_white[filtered_white["LaplacianVariance"] >= args.min_lap].copy()
-    else:
-        filtered_blur = filtered_white.copy()
-    _export_filtered(
-        name="FilteredBlur",
-        df=filtered_blur,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+        current = df_work
 
-    # FilteredCircularity: include >= quantile(0.1) computed from FULL anno distribution
-    circ_thr = df["circularity"].quantile(args.min_circ_q) if "circularity" in df.columns else None
-    if circ_thr is not None:
-        filtered_circ = filtered_blur[filtered_blur["circularity"] >= circ_thr].copy()
-    else:
-        filtered_circ = filtered_blur.copy()
-    _export_filtered(
-        name="FilteredCircularity",
-        df=filtered_circ,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+        if "small" in enabled_filters and have_area:
+            current = current[current["area"] >= args.min_area].copy()
 
-    # FilteredCHmetric: include >= quantile(0.1) computed from FULL anno distribution
-    ch_thr = df["chMetric"].quantile(args.min_ch_q) if "chMetric" in df.columns else None
-    if ch_thr is not None:
-        filtered_ch = filtered_circ[filtered_circ["chMetric"] >= ch_thr].copy()
-    else:
-        filtered_ch = filtered_circ.copy()
-    _export_filtered(
-        name="FilteredCHmetric",
-        df=filtered_ch,
-        extractor=extractor,
-        out_root=out_root,
-        patch_size=args.patch_size,
-        out_size=args.out_size,
-        save_masks=save_masks,
-        save_markups=save_markups,
-    )
+        # FilteredLarge
+        if "large" in enabled_filters:
+            if not have_area:
+                print("Skipping FilteredLarge (missing column: area)")
+            else:
+                filtered_large = current[current["area"] <= args.max_area].copy()
+                _export_filtered("FilteredLarge", filtered_large, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
+        if "large" in enabled_filters and have_area:
+            current = current[current["area"] <= args.max_area].copy()
+
+        # FilteredWhite
+        if "white" in enabled_filters:
+            if not have_white:
+                print("Skipping FilteredWhite (missing column: percWhite)")
+            else:
+                filtered_white = current[current["percWhite"] <= args.max_white].copy()
+                _export_filtered("FilteredWhite", filtered_white, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
+        if "white" in enabled_filters and have_white:
+            current = current[current["percWhite"] <= args.max_white].copy()
+
+        # FilteredBlur
+        if "blur" in enabled_filters:
+            if not have_lap:
+                print("Skipping FilteredBlur (missing column: LaplacianVariance)")
+            else:
+                filtered_blur = current[current["LaplacianVariance"] >= args.min_lap].copy()
+                _export_filtered("FilteredBlur", filtered_blur, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
+        if "blur" in enabled_filters and have_lap:
+            current = current[current["LaplacianVariance"] >= args.min_lap].copy()
+
+        # FilteredCircularity (threshold from full df, like manual)
+        if "circularity" in enabled_filters:
+            if not have_circ:
+                print("Skipping FilteredCircularity (missing column: circularity)")
+            else:
+                circ_thr = df["circularity"].quantile(args.min_circ_q)
+                filtered_circ = current[current["circularity"] >= circ_thr].copy()
+                _export_filtered("FilteredCircularity", filtered_circ, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
+        if "circularity" in enabled_filters and have_circ:
+            circ_thr = df["circularity"].quantile(args.min_circ_q)
+            current = current[current["circularity"] >= circ_thr].copy()
+
+        # FilteredCHmetric (threshold from full df, like manual)
+        if "chmetric" in enabled_filters:
+            if not have_ch:
+                print("Skipping FilteredCHmetric (missing column: chMetric)")
+            else:
+                ch_thr = df["chMetric"].quantile(args.min_ch_q)
+                filtered_ch = current[current["chMetric"] >= ch_thr].copy()
+                _export_filtered("FilteredCHmetric", filtered_ch, extractor, out_root, args.patch_size, args.out_size, save_masks, save_markups)
 
     # -----------------------------
-    # Style/scaling exports
+    # Style/scaling exports (always created)
+    # (folder_name, scaling_mode, crop_background, background_color)
+    #Scaling modes 
+    """0 = Fixed (get_img_fixed) 
+        Extract a fixed-size square patch (patch_size × patch_size) centered on the glomerulus. 
+        If the glomerulus is larger than the patch, it can get clipped. 
+        
+        1 = Independent (get_img_independent) 
+        Extract a patch that is exactly the polygon bounding box (width and height can differ). 
+        This does not preserve aspect ratio when later resized to 224×224 (it may stretch). 
+        
+        2 = Dependent (get_img_dependent) 
+        Extract a square patch that tightly contains the polygon bounding box (uses max(width,height)). 
+        Aspect ratio is preserved better (still resized, but starts square). 3
+        = FixedSqueeze (get_img_fixedSqueeze) 
+            Hybrid: if the glomerulus fits inside patch_size, it behaves like Fixed if it’s larger, it falls back to Dependent so you don’t clip large glomeruli
+    """
     # -----------------------------
     PRESETS = [
         ("FixedSqueeze-Tissue", 3, False, (0, 0, 0)),
