@@ -237,8 +237,8 @@ class GlomExtractor:
     def add_white_and_lap(self, w: int, in_folder: str) -> pd.DataFrame:
         """
         Compute:
-          - percWhite: fraction of background pixels that are "white-ish" in HSI
-          - LaplacianVariance: blur proxy on grayscale patch
+          - percWhite: fraction of background pixels that are "white-ish"/background in HSI
+          - LaplacianVariance: blur metric on the grayscale patch
         """
         if self.dataframe is None or len(self.dataframe) == 0:
             return self.dataframe
@@ -272,7 +272,6 @@ class GlomExtractor:
         """
         Build a slide path without forcing an extension.
 
-        Strategy:
         1) If img_name already has an extension, try that exact file in in_folder/Images
         2) Otherwise (or if missing), search for any file with the same stem in in_folder/Images
         """

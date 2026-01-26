@@ -19,17 +19,6 @@ def save_images(
     """
     Export extracted patches (and optional masks/markups) to disk.
 
-    Assumptions:
-      - df has columns: imgName, annId (optional), geometry (used inside extractor methods)
-      - extractor has methods:
-          get_img_fixed / get_img_independent / get_img_dependent / get_img_fixedSqueeze
-          get_markup
-          replace_background
-          return_dict_of_images
-      - dict_of_images keys are base names (stem), values contain "image_path"
-      - df["imgName"] stores the original image filename (with extension)
-
-    Notes:
       - All outputs are saved as PNG resized to (out_size, out_size).
     """
     _ensure_dirs(out_folder, save_mask, save_markup)
@@ -97,7 +86,7 @@ def _resolve_image_path(dict_of_images: dict, img_name: str) -> str | None:
     if entry and entry.get("image_path"):
         return entry["image_path"]
 
-    # fallback search (useful if keys differ between -f and -d modes)
+    # fallback search
     for v in dict_of_images.values():
         p = v.get("image_path")
         if p and os.path.basename(p) == img_name:

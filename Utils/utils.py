@@ -27,17 +27,12 @@ def get_img_from_coordinates(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Read a patch from an OpenSlide slide and rasterize a polygon mask.
-      - points are in local patch coordinates as [y, x]
-      - xmin/ymin are in slide coordinates as (x, y)
-      - OpenSlide.read_region expects (x, y) and (width, height)
     """
-    # OpenSlide expects (x, y) and (width, height)
     img = np.array(slide.read_region((int(xmin), int(ymin)), f, (int(wx), int(wy))))[..., :3]
 
     mask = np.zeros(img.shape, dtype=np.uint8)
     pts = np.asarray(points, dtype=np.int32)
 
-    # OpenCV expects points as [x, y]
     pts_xy = np.stack([pts[:, 1], pts[:, 0]], axis=1)
     mask = cv2.fillPoly(mask, pts_xy.reshape((1, pts_xy.shape[0], 2)), [255, 255, 255])
 

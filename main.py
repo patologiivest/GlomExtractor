@@ -6,17 +6,15 @@ from Utils.saver import save_images
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Glomerulus patch extraction & export (manual-draft compatible)")
+    parser = argparse.ArgumentParser(description="Glomerulus patch extraction & export")
 
     parser.add_argument("path", type=str, help="Dataset folder or single image")
 
     parser.add_argument("--out_folder", "-o", type=str, default="../OUTPUT/", help="Output root folder")
 
-    # Match manual draft defaults
     parser.add_argument("--patch_size", "-w", type=int, default=1000, help="Patch width in pixels (default: 1000)")
     parser.add_argument("--out_size", type=int, default=224, help="Export size for PNGs (default: 224)")
 
-    # Manual draft: most exports used these as True
     parser.add_argument("--save_masks", action="store_true", default=True, help="Also save masks (default: True)")
     parser.add_argument("--no_masks", action="store_true", help="Disable saving masks")
     parser.add_argument("--save_markups", action="store_true", default=True, help="Also save markups (default: True)")
@@ -25,13 +23,13 @@ def main():
     parser.add_argument("--csv", action="store_true", default=True, help="Save full dataframe CSV (default: True)")
     parser.add_argument("--no_csv", action="store_true", help="Disable saving CSV")
 
-    # Filter thresholds to match manual draft
+    # Filter thresholds
     parser.add_argument("--min_area", type=float, default=20000.0, help="FilteredSmall: keep area >= min_area (default: 20000)")
     parser.add_argument("--max_area", type=float, default=1200000.0, help="FilteredLarge: keep area <= max_area (default: 1200000)")
     parser.add_argument("--max_white", type=float, default=0.75, help="FilteredWhite: keep percWhite <= max_white (default: 0.75)")
     parser.add_argument("--min_lap", type=float, default=400.0, help="FilteredBlur: keep LaplacianVariance >= min_lap (default: 400)")
 
-    # Manual draft uses 10th percentile thresholds for these
+    # 10th percentile thresholds for these
     parser.add_argument("--min_circ_q", type=float, default=0.10, help="FilteredCircularity: keep >= quantile (default: 0.10)")
     parser.add_argument("--min_ch_q", type=float, default=0.10, help="FilteredCHmetric: keep >= quantile (default: 0.10)")
 
@@ -155,7 +153,7 @@ def main():
     )
 
     # -----------------------------
-    # Style/scaling exports (match manual)
+    # Style/scaling exports
     # -----------------------------
     PRESETS = [
         ("FixedSqueeze-Tissue", 3, False, (0, 0, 0)),
@@ -207,7 +205,6 @@ def _export_filtered(
         print("  Skipping (no rows after filtering).")
         return
 
-    # Manual draft uses scaling=0, crop=False for all filtered exports
     save_images(
         df=df,
         extractor=extractor,
